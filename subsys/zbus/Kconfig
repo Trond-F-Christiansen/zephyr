@@ -107,6 +107,18 @@ config ZBUS_ASSERT_MOCK
 	  enabled, _ZBUS_ASSERT returns -EFAULT instead of assert. It makes it more straightforward to test invalid
 	  parameters.
 
+config ZBUS_MULTIDOMAIN
+    bool "ZBUS multi-domain support"
+    depends on ZBUS
+    help
+      Enable support for multiple domains in ZBUS
+
+if ZBUS_MULTIDOMAIN
+
+rsource "Kconfig.multidomain"
+
+endif # ZBUS_MULTIDOMAIN
+
 
 config HEAP_MEM_POOL_ADD_SIZE_ZBUS
 	int "ZBus requested heap pool size."

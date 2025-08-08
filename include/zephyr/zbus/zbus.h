@@ -25,6 +25,35 @@ extern "C" {
  */
 
 /**
+ * @brief Type used to represent a channel message with optional domain information.
+ *
+ * This structure encapsulates message data along with optional domain metadata
+ * when CONFIG_ZBUS_MULTIDOMAIN is enabled. The domain information allows for
+ * message filtering and tracking of message origin across different system domains.
+ */
+struct zbus_message {
+	/** Message reference. Represents the message's reference that points to the actual shared
+	 * memory region.
+	 */
+	void *message;
+
+	/** Message size. Represents the channel's message size. */
+	size_t message_size;
+
+#if defined(CONFIG_ZBUS_MULTIDOMAIN) || defined(__DOXYGEN__)
+	/** Message origin domain. Represents the domain where the message originated.
+     * This string identifies the source domain and is used for message filtering.
+     * Maximum length is CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH.
+     */
+	char *message_domain;
+
+	/** Domain name length. Represents the actual length of the message domain string.
+     */
+	size_t domain_name_len;
+#endif
+};
+
+/**
  * @brief Type used to represent a channel mutable data.
  *
  * Every channel has a zbus_channel_data structure associated.
@@ -88,13 +117,10 @@ struct zbus_channel {
 	/** Unique numeric channel identifier. */
 	uint32_t id;
 #endif
-	/** Message reference. Represents the message's reference that points to the actual
-	 * shared memory region.
+	/** Message reference. points to the message data structure that contains the
+	 * actual message data.
 	 */
-	void *message;
-
-	/** Message size. Represents the channel's message size. */
-	size_t message_size;
+	struct zbus_message *message;
 
 	/** User data available to extend zbus features. The channel must be claimed before
 	 * using this field.
@@ -281,22 +307,31 @@ struct zbus_channel_observation {
 		.observers_end_idx = -1,                                                           \
 		.sem = Z_SEM_INITIALIZER(_CONCAT(_zbus_chan_data_, _name).sem, 1, 1),              \
 		IF_ENABLED(CONFIG_ZBUS_PRIORITY_BOOST,                                             \
-			   (.highest_observer_priority = ZBUS_MIN_THREAD_PRIORITY,))               \
-		 IF_ENABLED(CONFIG_ZBUS_RUNTIME_OBSERVERS,                                         \
-			   (.observers = SYS_SLIST_STATIC_INIT(                                    \
-				&_CONCAT(_zbus_chan_data_, _name).observers),))                    \
+			(.highest_observer_priority = ZBUS_MIN_THREAD_PRIORITY,))               \
+		IF_ENABLED(CONFIG_ZBUS_RUNTIME_OBSERVERS,                                   \
+			(.observers = SYS_SLIST_STATIC_INIT(                                    \
+				&_CONCAT(_zbus_chan_data_, _name).observers),))                     \
 	};                                                                                         \
 	static K_MUTEX_DEFINE(_CONCAT(_zbus_mutex_, _name));                                       \
+	IF_ENABLED(CONFIG_ZBUS_MULTIDOMAIN, (                                                      \
+	static char _CONCAT(_zbus_domain_, _name)[CONFIG_ZBUS_MULTIDOMAIN_MAX_MESSAGE_LENGTH] = "";\
+	))                                                                                         \
+	static struct zbus_message _CONCAT(_zbus_message_struct_, _name) = {                       \
+		.message = &_ZBUS_MESSAGE_NAME(_name),                                                 \
+		.message_size = sizeof(_type),                                                         \
+		IF_ENABLED(CONFIG_ZBUS_MULTIDOMAIN, (                                                  \
+			.message_domain = _CONCAT(_zbus_domain_, _name),                                   \
+			.domain_name_len = 0,))                                                  		   \
+	};                                                                                         \
 	_ZBUS_CPP_EXTERN const STRUCT_SECTION_ITERABLE(zbus_channel, _name) = {                    \
-		ZBUS_CHANNEL_NAME_INIT(_name) /* Maybe removed */                                  \
-		IF_ENABLED(CONFIG_ZBUS_CHANNEL_ID, (.id = _id,))                                   \
-		.message = &_ZBUS_MESSAGE_NAME(_name),                                             \
-		.message_size = sizeof(_type),                                                     \
+		ZBUS_CHANNEL_NAME_INIT(_name) /* Maybe removed */                                      \
+		IF_ENABLED(CONFIG_ZBUS_CHANNEL_ID, (.id = _id,))                                       \
+		.message = &_CONCAT(_zbus_message_struct_, _name),                                 \
 		.user_data = _user_data,                                                           \
 		.validator = _validator,                                                           \
 		.data = &_CONCAT(_zbus_chan_data_, _name),                                         \
 		IF_ENABLED(ZBUS_MSG_SUBSCRIBER_NET_BUF_POOL_ISOLATION,                             \
-			   (.msg_subscriber_pool = &_zbus_msg_subscribers_pool,))                  \
+			(.msg_subscriber_pool = &_zbus_msg_subscribers_pool,))                         \
 	}
 /* clang-format on */
 
@@ -557,6 +592,33 @@ struct zbus_channel_observation {
 #define ZBUS_MSG_SUBSCRIBER_DEFINE(_name) ZBUS_MSG_SUBSCRIBER_DEFINE_WITH_ENABLE(_name, true)
 /**
  *
+ * @brief Publish to a channel with a specified domain name
+ *
+ * This routine publishes a message to a channel with a specified domain name.
+ * The domain name allows for filtering messages based on their origin domain in a
+ * multi-domain environment.
+ *
+ * @param chan The channel's reference.
+ * @param msg Reference to the message where the publish function copies the channel's
+ * message data from.
+ * @param domain Reference to the domain name string.
+ * @param timeout Waiting period to publish the channel,
+ *                or one of the special values K_NO_WAIT and K_FOREVER.
+ *
+ * @retval 0 Channel published.
+ * @retval -ENOMSG The message is invalid based on the validator function or some of the
+ * observers could not receive the notification.
+ * @retval -EBUSY The channel is busy.
+ * @retval -EAGAIN Waiting period timed out.
+ * @retval -EFAULT A parameter is incorrect, the notification could not be sent to one or more
+ * observer, or the function context is invalid (inside an ISR). The function only returns this
+ * value when the @kconfig{CONFIG_ZBUS_ASSERT_MOCK} is enabled.
+ */
+int zbus_chan_pub_domain(const struct zbus_channel *chan, const void *msg, const char *domain,
+			 k_timeout_t timeout);
+
+/**
+ *
  * @brief Publish to a channel
  *
  * This routine publishes a message to a channel.
@@ -649,7 +711,7 @@ int zbus_chan_finish(const struct zbus_channel *chan);
  * @retval 0 Channel notified.
  * @retval -EBUSY The channel's semaphore returned without waiting.
  * @retval -EAGAIN Timeout to take the channel's semaphore.
- * @retval -ENOMEM There is not more buffer on the messgage buffers pool.
+ * @retval -ENOMEM There is not more buffer on the message buffers pool.
  * @retval -EFAULT A parameter is incorrect, the notification could not be sent to one or more
  * observer, or the function context is invalid (inside an ISR). The function only returns this
  * value when the @kconfig{CONFIG_ZBUS_ASSERT_MOCK} is enabled.
@@ -706,7 +768,7 @@ static inline void *zbus_chan_msg(const struct zbus_channel *chan)
 {
 	__ASSERT(chan != NULL, "chan is required");
 
-	return chan->message;
+	return chan->message->message;
 }
 
 /**
@@ -727,7 +789,7 @@ static inline const void *zbus_chan_const_msg(const struct zbus_channel *chan)
 {
 	__ASSERT(chan != NULL, "chan is required");
 
-	return chan->message;
+	return chan->message->message;
 }
 
 /**
@@ -743,7 +805,7 @@ static inline uint16_t zbus_chan_msg_size(const struct zbus_channel *chan)
 {
 	__ASSERT(chan != NULL, "chan is required");
 
-	return chan->message_size;
+	return chan->message->message_size;
 }
 
 /**
@@ -761,6 +823,40 @@ static inline void *zbus_chan_user_data(const struct zbus_channel *chan)
 
 	return chan->user_data;
 }
+
+#if defined(CONFIG_ZBUS_MULTIDOMAIN) || defined(__DOXYGEN__)
+
+/**
+ * @brief Get the channel's message domain name.
+ *
+ * This routine returns the channel's message domain name string.
+ *
+ * @param chan The channel's reference.
+ *
+ * @return Channel's message domain.
+ */
+static inline const char *zbus_chan_msg_domain(const struct zbus_channel *chan)
+{
+	__ASSERT(chan != NULL, "chan is required");
+	return chan->message->message_domain;
+}
+
+/**
+ * @brief Get the channel's message domain name length.
+ *
+ * This routine returns the channel's message domain name length.
+ *
+ * @param chan The channel's reference.
+ *
+ * @return Channel's message domain name length.
+ */
+static inline size_t zbus_chan_msg_domain_name_len(const struct zbus_channel *chan)
+{
+	__ASSERT(chan != NULL, "chan is required");
+	return chan->message->domain_name_len;
+}
+
+#endif /* CONFIG_ZBUS_MULTIDOMAIN */
 
 #if defined(CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_POOL_ISOLATION) || defined(__DOXYGEN__)
 
@@ -1125,6 +1221,32 @@ int zbus_sub_wait(const struct zbus_observer *sub, const struct zbus_channel **c
  */
 int zbus_sub_wait_msg(const struct zbus_observer *sub, const struct zbus_channel **chan, void *msg,
 		      k_timeout_t timeout);
+
+#if defined(CONFIG_ZBUS_MULTIDOMAIN) || defined(__DOXYGEN__)
+/**
+ * @brief Wait for a channel message with domain information.
+ *
+ * This routine makes the subscriber wait for the new message in case of channel publication.
+ * It also provides the domain information of the message.
+ *
+ * @param[in] sub The subscriber's reference.
+ * @param[out] chan The notification channel's reference.
+ * @param[out] msg A reference to a copy of the published message.
+ * @param[out] domain Buffer to store the message domain (must be at least
+ * CONFIG_ZBUS_MULTIDOMAIN_MAX_MESSAGE_LENGTH bytes).
+ * @param[in] timeout Waiting period for a notification arrival,
+ *                or one of the special values, K_NO_WAIT and K_FOREVER.
+ *
+ * @retval 0 Message received.
+ * @retval -EINVAL The observer is not a subscriber.
+ * @retval -ENOMSG Could not retrieve the net_buf from the subscriber FIFO.
+ * @retval -EILSEQ Received an invalid channel reference.
+ * @retval -EFAULT A parameter is incorrect, or the function context is invalid (inside an ISR). The
+ * function only returns this value when the @kconfig{CONFIG_ZBUS_ASSERT_MOCK} is enabled.
+ */
+int zbus_sub_wait_msg_with_domain(const struct zbus_observer *sub, const struct zbus_channel **chan,
+				  void *msg, char *domain, k_timeout_t timeout);
+#endif /* CONFIG_ZBUS_MULTIDOMAIN */
 
 #endif /* CONFIG_ZBUS_MSG_SUBSCRIBER */
 

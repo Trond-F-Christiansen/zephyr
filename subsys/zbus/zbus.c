@@ -23,8 +23,13 @@ static struct k_spinlock obs_slock;
 
 #if defined(CONFIG_ZBUS_MSG_SUBSCRIBER_BUF_ALLOC_DYNAMIC)
 
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
 NET_BUF_POOL_HEAP_DEFINE(_zbus_msg_subscribers_pool, CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_POOL_SIZE,
-			 sizeof(struct zbus_channel *), NULL);
+			sizeof(struct zbus_channel *) + CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH, NULL);
+#else
+NET_BUF_POOL_HEAP_DEFINE(_zbus_msg_subscribers_pool, CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_POOL_SIZE,
+			sizeof(struct zbus_channel *), NULL);
+#endif
 
 static inline struct net_buf *_zbus_create_net_buf(struct net_buf_pool *pool, size_t size,
 						   k_timeout_t timeout)
@@ -34,10 +39,17 @@ static inline struct net_buf *_zbus_create_net_buf(struct net_buf_pool *pool, si
 
 #else
 
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
 NET_BUF_POOL_FIXED_DEFINE(_zbus_msg_subscribers_pool,
-			  (CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_POOL_SIZE),
-			  (CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_STATIC_DATA_SIZE),
-			  sizeof(struct zbus_channel *), NULL);
+			(CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_POOL_SIZE),
+			(CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_STATIC_DATA_SIZE),
+			sizeof(struct zbus_channel *) + CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH, NULL);
+#else
+NET_BUF_POOL_FIXED_DEFINE(_zbus_msg_subscribers_pool,
+			(CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_POOL_SIZE),
+			(CONFIG_ZBUS_MSG_SUBSCRIBER_NET_BUF_STATIC_DATA_SIZE),
+			sizeof(struct zbus_channel *), NULL);
+#endif
 
 static inline struct net_buf *_zbus_create_net_buf(struct net_buf_pool *pool, size_t size,
 						   k_timeout_t timeout)
@@ -51,6 +63,14 @@ static inline struct net_buf *_zbus_create_net_buf(struct net_buf_pool *pool, si
 #endif /* CONFIG_ZBUS_MSG_SUBSCRIBER_BUF_ALLOC_DYNAMIC */
 
 #endif /* CONFIG_ZBUS_MSG_SUBSCRIBER */
+
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
+	/* Structure for storing channel and domain information in net_buf user data */
+	struct zbus_msg_user_data {
+		const struct zbus_channel *chan;
+		char domain[CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH];
+	} __aligned(sizeof(void *));
+#endif /* CONFIG_ZBUS_MULTIDOMAIN */
 
 int _zbus_init(void)
 {
@@ -141,6 +161,17 @@ static inline int _zbus_notify_observer(const struct zbus_channel *chan,
 		if (cloned_buf == NULL) {
 			return -ENOMEM;
 		}
+
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
+		/* Store domain information in the buffer's user data along with channel pointer */
+		struct zbus_msg_user_data *buf_user_data =
+			(struct zbus_msg_user_data *)net_buf_user_data(cloned_buf);
+
+		buf_user_data->chan = chan;
+		strncpy(buf_user_data->domain, chan->message->message_domain,
+			CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH - 1);
+		buf_user_data->domain[CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH - 1] = '\0';
+#endif
 
 		k_fifo_put(obs->message_fifo, cloned_buf);
 
@@ -374,7 +405,7 @@ static inline void chan_unlock(const struct zbus_channel *chan, int prio)
 #endif /* CONFIG_ZBUS_PRIORITY_BOOST */
 }
 
-int zbus_chan_pub(const struct zbus_channel *chan, const void *msg, k_timeout_t timeout)
+int zbus_chan_pub_domain(const struct zbus_channel *chan, const void *msg, const char *domain, k_timeout_t timeout)
 {
 	int err;
 
@@ -382,6 +413,11 @@ int zbus_chan_pub(const struct zbus_channel *chan, const void *msg, k_timeout_t 
 	_ZBUS_ASSERT(msg != NULL, "msg is required");
 	_ZBUS_ASSERT(k_is_in_isr() ? K_TIMEOUT_EQ(timeout, K_NO_WAIT) : true,
 		     "inside an ISR, the timeout must be K_NO_WAIT");
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
+	_ZBUS_ASSERT(domain != NULL, "domain is required");
+#else
+	ARGS_UNUSED(domain);
+#endif /* CONFIG_ZBUS_MULTIDOMAIN */
 
 	if (k_is_in_isr()) {
 		timeout = K_NO_WAIT;
@@ -389,7 +425,7 @@ int zbus_chan_pub(const struct zbus_channel *chan, const void *msg, k_timeout_t 
 
 	k_timepoint_t end_time = sys_timepoint_calc(timeout);
 
-	if (chan->validator != NULL && !chan->validator(msg, chan->message_size)) {
+	if (chan->validator != NULL && !chan->validator(msg, chan->message->message_size)) {
 		return -ENOMSG;
 	}
 
@@ -405,13 +441,31 @@ int zbus_chan_pub(const struct zbus_channel *chan, const void *msg, k_timeout_t 
 	chan->data->publish_count += 1;
 #endif /* CONFIG_ZBUS_CHANNEL_PUBLISH_STATS */
 
-	memcpy(chan->message, msg, chan->message_size);
+	memcpy(chan->message->message, msg, chan->message->message_size);
+
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
+	size_t domain_len = strlen(domain);
+	size_t copy_len = MIN(domain_len, CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH - 1);
+
+	memcpy(chan->message->message_domain, domain, copy_len);
+	chan->message->message_domain[copy_len] = '\0';
+	chan->message->domain_name_len = copy_len;
+#endif /* CONFIG_ZBUS_MULTIDOMAIN */
 
 	err = _zbus_vded_exec(chan, end_time);
 
 	chan_unlock(chan, context_priority);
 
 	return err;
+}
+
+int zbus_chan_pub(const struct zbus_channel *chan, const void *msg, k_timeout_t timeout)
+{
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
+	return zbus_chan_pub_domain(chan, msg, CONFIG_BOARD_QUALIFIERS, timeout);
+#else
+	return zbus_chan_pub_domain(chan, msg, NULL, timeout);
+#endif
 }
 
 int zbus_chan_read(const struct zbus_channel *chan, void *msg, k_timeout_t timeout)
@@ -430,7 +484,7 @@ int zbus_chan_read(const struct zbus_channel *chan, void *msg, k_timeout_t timeo
 		return err;
 	}
 
-	memcpy(msg, chan->message, chan->message_size);
+	memcpy(msg, chan->message->message, chan->message->message_size);
 
 	k_sem_give(&chan->data->sem);
 
@@ -524,7 +578,15 @@ int zbus_sub_wait_msg(const struct zbus_observer *sub, const struct zbus_channel
 		return -ENOMSG;
 	}
 
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
+	/* Extract channel from the user data structure */
+	struct zbus_msg_user_data *buf_user_data =
+		(struct zbus_msg_user_data *)net_buf_user_data(buf);
+
+	*chan = buf_user_data->chan;
+#else
 	*chan = *((struct zbus_channel **)net_buf_user_data(buf));
+#endif
 
 	memcpy(msg, net_buf_remove_mem(buf, zbus_chan_msg_size(*chan)), zbus_chan_msg_size(*chan));
 
@@ -532,6 +594,40 @@ int zbus_sub_wait_msg(const struct zbus_observer *sub, const struct zbus_channel
 
 	return 0;
 }
+
+#if defined(CONFIG_ZBUS_MULTIDOMAIN)
+int zbus_sub_wait_msg_with_domain(const struct zbus_observer *sub, const struct zbus_channel **chan,
+				void *msg, char *domain, k_timeout_t timeout)
+{
+	_ZBUS_ASSERT(!k_is_in_isr(), "zbus_sub_wait_msg_with_domain cannot be used inside ISRs");
+	_ZBUS_ASSERT(sub != NULL, "sub is required");
+	_ZBUS_ASSERT(sub->type == ZBUS_OBSERVER_MSG_SUBSCRIBER_TYPE,
+					"sub must be a MSG_SUBSCRIBER");
+	_ZBUS_ASSERT(sub->message_fifo != NULL, "sub message_fifo is required");
+	_ZBUS_ASSERT(chan != NULL, "chan is required");
+	_ZBUS_ASSERT(msg != NULL, "msg is required");
+	_ZBUS_ASSERT(domain != NULL, "domain is required");
+
+	struct net_buf *buf = k_fifo_get(sub->message_fifo, timeout);
+
+	if (buf == NULL) {
+		return -ENOMSG;
+	}
+
+	/* Extract both channel and domain from the user data structure */
+	struct zbus_msg_user_data *buf_user_data =
+		(struct zbus_msg_user_data *)net_buf_user_data(buf);
+
+	*chan = buf_user_data->chan;
+	strncpy(domain, buf_user_data->domain, CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH - 1);
+	domain[CONFIG_ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH - 1] = '\0';
+
+	memcpy(msg, net_buf_remove_mem(buf, zbus_chan_msg_size(*chan)), zbus_chan_msg_size(*chan));
+	net_buf_unref(buf);
+
+	return 0;
+}
+#endif /* CONFIG_ZBUS_MULTIDOMAIN */
 
 #endif /* CONFIG_ZBUS_MSG_SUBSCRIBER */
 

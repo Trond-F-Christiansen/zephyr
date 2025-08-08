@@ -1,0 +1,65 @@
+#
+# Copyright (c) 2025 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menu "ZBUS_MULTIDOMAIN Configuration"
+
+menu "Logging"
+
+	module = ZBUS_MULTIDOMAIN
+	module-str = zbus_multidomain
+	source "subsys/logging/Kconfig.template.log_config"
+
+endmenu # Log levels
+
+config ZBUS_MULTIDOMAIN_MAX_DOMAIN_NAME_LENGTH
+	int "Maximum length of domain names"
+	default 32
+	help
+	  Set the maximum length for domain names used in ZBUS multi-domain.
+
+config ZBUS_MULTIDOMAIN_MAX_MESSAGE_LENGTH
+	int "Maximum length of messages in multi-domain ZBUS"
+	default 64
+	help
+	  Set the maximum length for messages in multi-domain ZBUS. Increasing this
+	  value allows for larger messages to be sent between domains, but may also
+	  increase memory usage and processing time.
+
+config ZBUS_MULTIDOMAIN_FORWARDER_ZBUS_TIMEOUT
+	int "Timeout for zbus r/w operations in multi-domain ZBUS in milliseconds"
+	default 100
+	help
+	  Set the timeout for zbus operations in multi-domain ZBUS.
+
+config ZBUS_MULTIDOMAIN_IPC
+	bool "IPC backend support for multi-domain ZBUS"
+	default n
+	select MBOX
+	select IPC_SERVICE
+	help
+	  Enable IPC backend for multi-domain ZBUS. 
+
+if ZBUS_MULTIDOMAIN_IPC
+
+config ZBUS_MULTIDOMAIN_FORWARDER_IPC_TIMEOUT
+	int "Timeout for IPC operations in multi-domain ZBUS in milliseconds"
+	default 200
+	help
+	  Set the timeout for IPC operations in multi-domain ZBUS. 
+
+config ZBUS_MULTIDOMAIN_IPC_FORWARDER_THREAD_STACK_SIZE
+	int "Stack size for the multi-domain ZBUS forwarder thread"
+	default 1024
+	help
+	  Set the stack size for the thread that handles multi-domain ZBUS forwarding.
+config ZBUS_MULTIDOMAIN_IPC_FORWARDER_THREAD_PRIORITY
+	int "Priority for the multi-domain ZBUS forwarder thread"
+	default 7
+	help
+	  Set the priority for the thread that handles multi-domain ZBUS forwarding.
+
+endif # ZBUS_MULTIDOMAIN_IPC
+endmenu # ZBUS_MULTIDOMAIN

@@ -1,0 +1,24 @@
+sample:
+  name: ZBus multicore example (IPC backend)
+common:
+  timeout: 30
+tests:
+  sample.zbus.ipc_forwarder:
+    platform_allow:
+      - nrf54h20dk/nrf54h20/cpuapp
+      - nrf5340dk/nrf5340/cpuapp
+    integration_platforms:
+      - nrf54h20dk/nrf54h20/cpuapp
+      - nrf5340dk/nrf5340/cpuapp
+    tags: zbus
+    sysbuild: true
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: false
+      regex:
+        - "I: .*/cpuapp started"
+        - "I: Received message from domain 'nrf(54h20|5340)/cpuapp': cnt=0, str='Hello from CPUAPP'"
+        - "I: Received message from domain 'nrf(54h20|5340)/cpu(rad|net)': cnt=0, str='Hello from CPUAPP'"
+        - "I: Received message from domain 'nrf(54h20|5340)/cpuapp': cnt=1, str='Hello from CPUAPP'"
+        - "I: Received message from domain 'nrf(54h20|5340)/cpu(rad|net)': cnt=1, str='Hello from CPUAPP'"
