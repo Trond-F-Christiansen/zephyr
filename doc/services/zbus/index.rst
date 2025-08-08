@@ -897,6 +897,8 @@ available:
   to send and receive messages to and from the bus;
 * :zephyr:code-sample:`zbus-ipc-forwarder` shows how to use the zbus IPC forwarder to
   forward zbus messages between two cores;
+* :zephyr:code-sample:`zbus-uart-forwarder` shows how to use the zbus UART forwarder to
+  forward zbus messages between two UART devices;
 * :zephyr:code-sample:`zbus-priority-boost` illustrates zbus priority boost feature with a priority
   inversion scenario;
 * :zephyr:code-sample:`zbus-runtime-obs-registration` illustrates a way of using the runtime
@@ -961,6 +963,8 @@ Related configuration options:
   of the message.
 * :kconfig:option:`CONFIG_ZBUS_MULTIDOMAIN_IPC` enables the zbus multi-domain IPC feature, which allows
   messages to be sent between different domains using the zbus IPC forwarder.
+* :kconfig:option:`CONFIG_ZBUS_MULTIDOMAIN_UART` enables the zbus multi-domain UART feature, which allows
+  messages to be sent between different domains using the zbus UART bridge.
 
 API Reference
 *************

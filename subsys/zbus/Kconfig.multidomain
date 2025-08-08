@@ -62,4 +62,42 @@ config ZBUS_MULTIDOMAIN_IPC_FORWARDER_THREAD_PRIORITY
 	  Set the priority for the thread that handles multi-domain ZBUS forwarding.
 
 endif # ZBUS_MULTIDOMAIN_IPC
+
+config ZBUS_MULTIDOMAIN_UART
+	bool "UART backend support for multi-domain ZBUS"
+	default n
+	select UART
+	help
+	  Enable UART backend for multi-domain ZBUS.
+
+if ZBUS_MULTIDOMAIN_UART
+
+config ZBUS_MULTIDOMAIN_UART_RX_BUFFER_COUNT
+	int "Number of UART RX buffers for ZBus multi-domain forwarding"
+	default 2
+	range 2 8
+	help
+	  Number of RX buffers to use for asynchronous UART reception
+	  in ZBus multi-domain forwarding. If rapid message exchange or slow
+	  handling of zbus_pub() is expected, increase this value.
+
+config ZBUS_MULTIDOMAIN_FORWARDER_UART_TIMEOUT
+	int "Timeout for UART operations in multi-domain ZBUS in milliseconds"
+	default 100
+	help
+	  Set the timeout for UART operations in multi-domain ZBUS. 
+
+config ZBUS_MULTIDOMAIN_UART_FORWARDER_THREAD_STACK_SIZE
+	int "Stack size for the multi-domain ZBUS UART forwarder thread"
+	default 1024
+	help
+	  Set the stack size for the thread that handles multi-domain ZBUS UART forwarding.
+
+config ZBUS_MULTIDOMAIN_UART_FORWARDER_THREAD_PRIORITY
+	int "Priority for the multi-domain ZBUS UART forwarder thread"
+	default 7
+	help
+	  Set the priority for the thread that handles multi-domain ZBUS UART forwarding.
+
+endif # ZBUS_MULTIDOMAIN_UART
 endmenu # ZBUS_MULTIDOMAIN
