@@ -16,4 +16,8 @@ if(CONFIG_ZBUS_MULTIDOMAIN_IPC)
     zephyr_library_sources(zbus_multidomain_ipc.c)
 endif()
 
+if(CONFIG_ZBUS_MULTIDOMAIN_UART)
+    zephyr_library_sources(zbus_multidomain_uart.c)
+endif()
+
 zephyr_library_sources(zbus_iterable_sections.c)
