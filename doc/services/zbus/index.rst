@@ -895,6 +895,8 @@ available:
   a host via serial;
 * :zephyr:code-sample:`zbus-remote-mock` illustrates how to implement an external mock (on the host)
   to send and receive messages to and from the bus;
+* :zephyr:code-sample:`zbus-ipc-forwarder` shows how to use the zbus IPC forwarder to
+  forward zbus messages between two cores;
 * :zephyr:code-sample:`zbus-priority-boost` illustrates zbus priority boost feature with a priority
   inversion scenario;
 * :zephyr:code-sample:`zbus-runtime-obs-registration` illustrates a way of using the runtime
@@ -954,6 +956,11 @@ Related configuration options:
   observers to statically allocate.
 * :kconfig:option:`CONFIG_ZBUS_RUNTIME_OBSERVERS_NODE_ALLOC_NONE` use user-provided runtime
   observers nodes;
+* :kconfig:option:`CONFIG_ZBUS_MULTIDOMAIN` enables the zbus multi-domain feature, which allows
+  messages to be marked with an origin domain allowing the zbus to filter messages based on the origin
+  of the message.
+* :kconfig:option:`CONFIG_ZBUS_MULTIDOMAIN_IPC` enables the zbus multi-domain IPC feature, which allows
+  messages to be sent between different domains using the zbus IPC forwarder.
 
 API Reference
 *************
