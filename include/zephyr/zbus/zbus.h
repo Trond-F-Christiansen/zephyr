@@ -738,6 +738,20 @@ static inline const char *zbus_chan_name(const struct zbus_channel *chan)
 
 #endif
 
+#if defined(CONFIG_ZBUS_CHANNEL_NAME) || defined(__DOXYGEN__)
+
+/**
+ * @brief Retrieve a zbus channel from its string name
+ * 
+ * @param name Name of the channel to retrieve.
+ * 
+ * @retval NULL If channel with name @a name does not exist.
+ * @retval chan Channel pointer with name @a name otherwise.
+ */
+const struct zbus_channel *zbus_chan_from_name(const char *name);
+
+#endif /* CONFIG_ZBUS_CHANNEL_NAME */
+
 #if defined(CONFIG_ZBUS_CHANNEL_ID) || defined(__DOXYGEN__)
 
 /**

@@ -123,6 +123,24 @@ int _zbus_init(void)
 }
 SYS_INIT(_zbus_init, APPLICATION, CONFIG_ZBUS_CHANNELS_SYS_INIT_PRIORITY);
 
+#if defined(CONFIG_ZBUS_CHANNEL_NAME)
+
+const struct zbus_channel *zbus_chan_from_name(const char *name)
+{
+	__ASSERT(name != NULL, "name is required");
+
+	STRUCT_SECTION_FOREACH(zbus_channel, chan) {
+		if (strcmp(chan->name, name) == 0) {
+			/* Found matching channel */
+			return chan;
+		}
+	}
+	/* No matching channel exists */
+	return NULL;
+}
+
+#endif /* CONFIG_ZBUS_CHANNEL_NAME */
+
 #if defined(CONFIG_ZBUS_CHANNEL_ID)
 
 const struct zbus_channel *zbus_chan_from_id(uint32_t channel_id)
