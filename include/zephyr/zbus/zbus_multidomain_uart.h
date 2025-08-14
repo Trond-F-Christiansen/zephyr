@@ -40,25 +40,9 @@ struct zbus_multidomain_uart_config {
 
 	/** Index for the next RX buffer to use. */
 	volatile uint8_t async_rx_buffer_idx;
-};
 
-/**
- * @brief Configuration structure for UART forwarder.
- *
- * This structure holds the configuration parameters for the UART forwarder,
- * including the channel to forward messages from, the channel observer,
- * the UART configuration.
- *
- */
-struct zbus_multidomain_uart_forwarder_config {
-	/** Channel to forward messages from. */
-	const struct zbus_channel *chan;
-
-	/** Channel observer for the UART forwarder. Should be msg subscriber. */
-	const struct zbus_observer *uart_forwarder_sub;
-
-	/** UART configuration for the forwarder. */
-	struct zbus_multidomain_uart_config *uart_config;
+	/** Semaphore to signal when the UART TX is busy. */
+	struct k_sem *tx_busy_sem;
 };
 
 /**
@@ -111,39 +95,55 @@ void zbus_multidomain_uart_forwarder_thread(void *config, void *arg1, void *arg2
  * @param _uart_dev UART device instance to use for forwarding
  */
 #define _ZBUS_MULTIDOMAIN_UART_CONF_SETUP(_name, _chan, _zbus_subscriber, _uart_dev)               \
+	static K_SEM_DEFINE(_name##_uart_tx_busy_sem, 1, 1);                                      \
 	static struct zbus_multidomain_uart_config _name##_uart_config = {                         \
 		.uart_dev = _uart_dev,                                                             \
 		.async_rx_buffer = {{0}},                                                          \
 		.async_rx_buffer_idx = 0,                                                          \
-	};                                                                                         \
-	struct zbus_multidomain_uart_forwarder_config _name##_uart_forwarder_config = {            \
-		.chan = &_chan,                                                                    \
-		.uart_forwarder_sub = &_zbus_subscriber,                                           \
-		.uart_config = &_name##_uart_config,                                               \
+		.tx_busy_sem = &_name##_uart_tx_busy_sem,                                          \
 	};
 
 /** @endcond */
 
 /**
- * @brief Macro to add a UART forwarder to a ZBUS channel.
- *
- * This macro sets up a UART forwarder that listens to a ZBUS channel and forwards messages
- * to the specified UART device. It defines the necessary configurations, adds a message subscriber
- * to the ZBUS channel, and starts a thread for the UART forwarder.
+ * @brief Macro to setup a UART ZBUS forwarder.
+ * 
+ * This macro sets up the backend for a UART ZBUS forwarder. It sets up a message subscriber,
+ * initializes the UART backend, and creates a thread to handle incoming messages.
  *
  * @param _name Name of the UART forwarder
- * @param _zbus_chan ZBUS channel to forward messages from
  * @param _uart_dt_nodelabel Device tree label for the UART instance
+ * 
+ * @note This macro sets up a thread
+ * @note The macro does not add the message subscriber to the channel, 
+ * use @ref ZBUS_MULTIDOMAIN_FORWARDER_UART_ADD_CHANNEL
  */
-#define ZBUS_MULTIDOMAIN_ADD_FORWARDER_UART(_name, _zbus_chan, _uart_dt_nodelabel)                 \
+#define ZBUS_MULTIDOMAIN_DEFINE_FORWARDER_UART(_name, _uart_dt_nodelabel) \
 	ZBUS_MSG_SUBSCRIBER_DEFINE(_name##_forwarder);                                             \
-	ZBUS_CHAN_ADD_OBS(_zbus_chan, _name##_forwarder, 1);                                       \
 	_ZBUS_MULTIDOMAIN_UART_CONF_SETUP(_name, _zbus_chan, _name##_forwarder,                    \
 					  DEVICE_DT_GET(DT_NODELABEL(_uart_dt_nodelabel)));        \
 	K_THREAD_DEFINE(_name##_forwarder_thread_id,                                               \
 			CONFIG_ZBUS_MULTIDOMAIN_UART_FORWARDER_THREAD_STACK_SIZE,                  \
-			zbus_multidomain_uart_forwarder_thread, &_name##_uart_forwarder_config,    \
-			NULL, NULL, CONFIG_ZBUS_MULTIDOMAIN_UART_FORWARDER_THREAD_PRIORITY, 0, 0);
+			zbus_multidomain_uart_forwarder_thread, &_name##_uart_config,    \
+			&_name##_forwarder, NULL, CONFIG_ZBUS_MULTIDOMAIN_UART_FORWARDER_THREAD_PRIORITY, 0, 0);
+
+/**
+ * @brief Macro to add a channel to a UART forwarder.
+ * 
+ * This macro adds a ZBUS channel to a UART forwarder, allowing the forwarder to listen for messages
+ * on the specified channel and forward them via UART.
+ * 
+ * @param _name Name of the UART forwarder
+ * @param _zbus_chan ZBUS channel to forward messages from
+ * 
+ * @note This macro does not create the forwarder, use @ref ZBUS_MULTIDOMAIN_DEFINE_FORWARDER_UART
+ *       to create the forwarder first.
+ * @note The forwarder must be created before adding channels to it.
+ */
+#define ZBUS_MULTIDOMAIN_FORWARDER_UART_ADD_CHANNEL(_name, _zbus_chan) \
+	ZBUS_CHAN_ADD_OBS(_zbus_chan, _name##_forwarder, 0);  
+
+
 
 /**
  * @}

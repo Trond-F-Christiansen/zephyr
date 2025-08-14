@@ -110,6 +110,7 @@ config ZBUS_ASSERT_MOCK
 config ZBUS_MULTIDOMAIN
     bool "ZBUS multi-domain support"
     depends on ZBUS
+	select ZBUS_CHANNEL_NAME
     help
       Enable support for multiple domains in ZBUS
 

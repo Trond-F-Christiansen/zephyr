@@ -35,6 +35,8 @@ struct generic_domain_msg {
 	size_t domain_size;
 	size_t msg_size;
 	uint8_t message_data[CONFIG_ZBUS_MULTIDOMAIN_MAX_MESSAGE_LENGTH];
+	char chan_name[CONFIG_ZBUS_MULTIDOMAIN_MAX_CHANNEL_NAME_LENGTH];
+	size_t chan_name_len;
 };
 
 #define ZBUS_MULTIDOMAIN_WRAPPED_DOMAIN_MSG_SIZE (sizeof(struct generic_domain_msg))
@@ -55,7 +57,7 @@ struct generic_domain_msg {
  *       The function ensures that the domain string is null-terminated.
  */
 void zbus_multidomain_wrap_domain_msg(struct generic_domain_msg *msg_wrapper, const char *domain,
-				      const void *msg, size_t msg_size);
+				      const void *msg, size_t msg_size, const char *chan_name);
 
 /**
  * @}
