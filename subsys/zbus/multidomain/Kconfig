@@ -26,4 +26,22 @@ config ZBUS_MULTIDOMAIN_CHANNEL_NAME_SIZE
       Configures the maximum size of channel names used in ZBus multidomain communication.
       This setting affects how long channel names can be when communicating between domains.
 
+config ZBUS_MULTIDOMAIN_UART
+    bool "ZBus multidomain UART backend"
+    default n
+    help
+      Enables the ZBus multidomain UART backend, allowing communication between domains over UART.
+      This feature is useful for systems that require inter-domain communication via UART.
+
+if ZBUS_MULTIDOMAIN_UART
+
+config ZBUS_MULTIDOMAIN_UART_BUF_COUNT
+    int "ZBus multidomain UART buffer count"
+    default 2
+    range 2 8
+    help
+      Configures the number of buffers used for the ZBus multidomain UART backend.
+
+endif # ZBUS_MULTIDOMAIN_UART
+
 endmenu # ZBUS_MULTIDOMAIN Configuration
