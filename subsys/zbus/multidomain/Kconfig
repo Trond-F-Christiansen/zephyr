@@ -1,0 +1,29 @@
+#
+# Copyright (c) 2025 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menu "ZBUS_MULTIDOMAIN Configuration"
+
+module = ZBUS_MULTIDOMAIN
+module-str = zbus_multidomain
+source "subsys/logging/Kconfig.template.log_config"
+
+config ZBUS_MULTIDOMAIN_MESSAGE_SIZE
+    int "ZBus multidomain message size"
+    default 256
+    range 128 1024
+    help
+      Configures the size of messages used in ZBus multidomain communication.
+      This setting affects the maximum size of messages that can be sent between domains.
+
+config ZBUS_MULTIDOMAIN_CHANNEL_NAME_SIZE
+    int "ZBus multidomain channel name size"
+    default 32
+    range 16 64
+    help
+      Configures the maximum size of channel names used in ZBus multidomain communication.
+      This setting affects how long channel names can be when communicating between domains.
+
+endmenu # ZBUS_MULTIDOMAIN Configuration
