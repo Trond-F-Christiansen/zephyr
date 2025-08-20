@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2025 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
 #include <zephyr/zbus/multidomain/zbus_multidomain_uart.h>
 
 #include <zephyr/logging/log.h>

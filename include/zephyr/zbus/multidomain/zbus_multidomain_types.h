@@ -30,7 +30,8 @@ extern "C" {
  * Zbus setup. Each type corresponds to a different communication backend.
  */
 enum zbus_multidomain_type {
-	ZBUS_MULTIDOMAIN_TYPE_UART
+	ZBUS_MULTIDOMAIN_TYPE_UART,
+	ZBUS_MULTIDOMAIN_TYPE_IPC
 };
 
 /**
@@ -52,7 +53,7 @@ struct zbus_proxy_agent_msg {
 
 	/* The name of the channel */
 	char channel_name[CONFIG_ZBUS_MULTIDOMAIN_CHANNEL_NAME_SIZE];
-};
+} __packed;
 
 /**
  * @brief Proxy agent API structure.
