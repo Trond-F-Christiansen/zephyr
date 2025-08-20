@@ -1,0 +1,17 @@
+&cpuapp_bellboard {
+	status = "okay";
+};
+
+ipc0: &cpuapp_cpuflpr_ipc {
+	status = "okay";
+};
+
+&cpuflpr_vevif {
+	status = "okay";
+};
+
+/ {
+	chosen {
+		/delete-property/ zephyr,bt-hci;
+	};
+};
