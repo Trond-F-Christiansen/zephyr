@@ -3,6 +3,29 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(zbus_multidomain, CONFIG_ZBUS_MULTIDOMAIN_LOG_LEVEL);
 
+int zbus_proxy_agent_set_recv_cb(struct zbus_proxy_agent_config *config,
+				int (*recv_cb)(struct zbus_proxy_agent_msg *msg))
+{
+	if (config == NULL || config->api == NULL || config->backend_config == NULL) {
+		LOG_ERR("Invalid proxy agent configuration");
+		return -EINVAL;
+	}
+
+	if (config->api->backend_set_recv_cb == NULL) {
+		LOG_ERR("Backend set receive callback function is not defined");
+		return -ENOSYS;
+	}
+
+	int ret = config->api->backend_set_recv_cb(config->backend_config, recv_cb);
+	if (ret < 0) {
+		LOG_ERR("Failed to set receive callback for proxy agent %s: %d", config->name, ret);
+		return ret;
+	}
+
+	LOG_DBG("Receive callback set successfully for proxy agent %s", config->name);
+	return 0;
+}
+
 int zbus_proxy_agent_init(struct zbus_proxy_agent_config *config)
 {
 	if (config == NULL || config->api == NULL || config->backend_config == NULL) {
@@ -87,7 +110,13 @@ int zbus_proxy_agent_thread(struct zbus_proxy_agent_config *config,
 
 	LOG_DBG("Starting thread for proxy agent %s", config->name);
 
-	int ret = zbus_proxy_agent_init(config);
+	int ret = zbus_proxy_agent_set_recv_cb(config, zbus_proxy_agent_msg_recv_cb);
+	if (ret < 0) {
+		LOG_ERR("Failed to set receive callback for proxy agent %s: %d", config->name, ret);
+		return ret;
+	}
+
+	ret = zbus_proxy_agent_init(config);
 	if (ret < 0) {
 		LOG_ERR("Failed to initialize proxy agent %s: %d", config->name, ret);
 		return ret;

@@ -26,15 +26,23 @@ extern "C" {
  * @{
  */
 
-/* External declaration of the common message reception callback */
-extern int zbus_proxy_agent_msg_recv_cb(struct zbus_proxy_agent_msg *msg);
-
 struct zbus_multidomain_uart_config {
+
+	/** UART device */
 	const struct device *dev;
+
+	/** Asynchronous RX buffer */
 	uint8_t async_rx_buf[CONFIG_ZBUS_MULTIDOMAIN_UART_BUF_COUNT]
 			    [sizeof(struct zbus_proxy_agent_msg)];
+
+	/** Index of the current async RX buffer */
 	volatile uint8_t async_rx_buf_idx;
+
+	/** Semaphore to signal when TX is done */
 	struct k_sem tx_busy_sem;
+
+	/** Callback function for received messages */
+	int (*recv_cb)(struct zbus_proxy_agent_msg *msg);
 };
 
 /** @cond INTERNAL_HIDDEN */

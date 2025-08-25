@@ -83,15 +83,18 @@ struct zbus_proxy_agent_api {
 	int (*backend_send)(void *config, struct zbus_proxy_agent_msg *msg);
 
 	/**
-	 * @brief Callback function for receiving messages.
+	 * @brief Set the receive callback for the proxy agent.
 	 *
-	 * This function is called when a message is received by the backend.
+	 * This function is called to set the callback function that will be invoked
+	 * when a message is received by the backend.
 	 *
-	 * @param msg Pointer to the received message.
+	 * @param config Pointer to the backend specific configuration.
+	 * @param recv_cb Pointer to the callback function to be set.
 	 * @return int 0 on success, negative error code on failure.
 	 */
-	int (*backend_msg_recv_cb)(struct zbus_proxy_agent_msg *msg);
-} __packed;
+	int (*backend_set_recv_cb)(void *config,
+				       int (*recv_cb)(struct zbus_proxy_agent_msg *msg));
+};
 
 /**
  * @brief Configuration structure for the proxy agent.

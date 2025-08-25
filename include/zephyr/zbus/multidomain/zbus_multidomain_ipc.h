@@ -26,9 +26,6 @@ extern "C" {
  * @{
  */
 
-/* External declaration of the common message reception callback */
-extern int zbus_proxy_agent_msg_recv_cb(struct zbus_proxy_agent_msg *msg);
-
 /**
  * @brief Structure for IPC backend configuration.
  */
@@ -45,6 +42,9 @@ struct zbus_multidomain_ipc_config {
 
 	/** Semaphore to signal when the IPC endpoint is bound */
 	struct k_sem ept_bound_sem;
+
+	/** Callback function for received messages */
+	int (*recv_cb)(struct zbus_proxy_agent_msg *msg);
 };
 
 /**

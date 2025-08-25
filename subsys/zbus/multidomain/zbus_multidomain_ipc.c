@@ -43,12 +43,32 @@ void zbus_multidomain_ipc_recv_cb(const void *data, size_t len, void *config)
 
 	struct zbus_proxy_agent_msg *msg = (struct zbus_proxy_agent_msg *)data;
 
-	/* Call the common message reception callback */
-	int ret = zbus_proxy_agent_msg_recv_cb(msg);
+	if (ipc_config->recv_cb == NULL) {
+		LOG_ERR("No receive callback set for IPC endpoint %s", ipc_config->ept_cfg->name);
+		return;
+	}
+
+	int ret = ipc_config->recv_cb(msg);
 	if (ret < 0) {
 		LOG_ERR("Failed to process received message on IPC endpoint %s: %d",
 			ipc_config->ept_cfg->name, ret);
 	}
+}
+
+int zbus_multidomain_ipc_backend_set_recv_cb(void *config,
+				       int (*recv_cb)(struct zbus_proxy_agent_msg *msg))
+{
+	struct zbus_multidomain_ipc_config *ipc_config =
+		(struct zbus_multidomain_ipc_config *)config;
+
+	if (ipc_config == NULL) {
+		LOG_ERR("Invalid parameters to set receive callback");
+		return -EINVAL;
+	}
+
+	ipc_config->recv_cb = recv_cb;
+	LOG_DBG("Set receive callback for IPC endpoint %s", ipc_config->ept_cfg->name);
+	return 0;
 }
 
 int zbus_multidomain_ipc_backend_init(void *config)
@@ -136,4 +156,6 @@ int zbus_multidomain_ipc_backend_send(void *config, struct zbus_proxy_agent_msg 
 /* Define the IPC backend API */
 const struct zbus_proxy_agent_api zbus_multidomain_ipc_api = {
 	.backend_init = zbus_multidomain_ipc_backend_init,
-	.backend_send = zbus_multidomain_ipc_backend_send};
+	.backend_send = zbus_multidomain_ipc_backend_send,
+	.backend_set_recv_cb = zbus_multidomain_ipc_backend_set_recv_cb,
+};

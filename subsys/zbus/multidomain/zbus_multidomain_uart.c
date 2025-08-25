@@ -43,7 +43,12 @@ void zbus_multidomain_uart_backend_cb(const struct device *dev, struct uart_even
 			return;
 		}
 
-		ret = zbus_proxy_agent_msg_recv_cb(msg);
+		if (uart_config->recv_cb == NULL) {
+			LOG_ERR("Receive callback not set, dropping message");
+			return;
+		}
+
+		ret = uart_config->recv_cb(msg);
 		if (ret < 0) {
 			LOG_ERR("Failed to process received message: %d", ret);
 			return;
@@ -79,6 +84,22 @@ void zbus_multidomain_uart_backend_cb(const struct device *dev, struct uart_even
 		LOG_DBG("Unhandled UART event: %d", evt->type);
 		break;
 	}
+}
+
+int zbus_multidomain_uart_backend_set_recv_cb(void *config,
+				       int (*recv_cb)(struct zbus_proxy_agent_msg *msg))
+{
+	struct zbus_multidomain_uart_config *uart_config =
+		(struct zbus_multidomain_uart_config *)config;
+
+	if (uart_config == NULL) {
+		LOG_ERR("Invalid parameters to set receive callback");
+		return -EINVAL;
+	}
+
+	uart_config->recv_cb = recv_cb;
+	LOG_DBG("Set receive callback for UART device %s", uart_config->dev->name);
+	return 0;
 }
 
 int zbus_multidomain_uart_backend_init(void *config)
@@ -151,4 +172,5 @@ int zbus_multidomain_uart_backend_send(void *config, struct zbus_proxy_agent_msg
 const struct zbus_proxy_agent_api zbus_multidomain_uart_api = {
 	.backend_init = zbus_multidomain_uart_backend_init,
 	.backend_send = zbus_multidomain_uart_backend_send,
+	.backend_set_recv_cb = zbus_multidomain_uart_backend_set_recv_cb,
 };
