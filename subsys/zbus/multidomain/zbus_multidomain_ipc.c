@@ -9,6 +9,52 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(zbus_multidomain_ipc, CONFIG_ZBUS_MULTIDOMAIN_LOG_LEVEL);
 
+int zbus_multidomain_ipc_backend_ack(void *config, uint32_t msg_id)
+{
+	int ret;
+
+	struct zbus_multidomain_ipc_config *ipc_config =
+		(struct zbus_multidomain_ipc_config *)config;
+
+	if (ipc_config == NULL) {
+		LOG_ERR("Invalid parameters to send ACK");
+		return -EINVAL;
+	}
+
+	struct zbus_proxy_agent_msg ack_msg = {
+		.type = ZBUS_PROXY_AGENT_MSG_TYPE_ACK,
+		.id = msg_id,
+		.message_size = 0,
+	};
+
+	ret = ipc_service_send(&ipc_config->ipc_ept, (void *)&ack_msg, sizeof(ack_msg));
+	if (ret < 0) {
+		LOG_ERR("Failed to send ACK message: %d", ret);
+		return ret;
+	}
+
+	LOG_DBG("Sent ACK for message %d via IPC device %s", msg_id, ipc_config->dev->name);
+
+	return 0;
+}
+
+static void zbus_multidomain_ipc_backend_ack_work_handler(struct k_work *work)
+{
+
+	struct zbus_multidomain_ipc_config *ipc_config =
+		CONTAINER_OF(work, struct zbus_multidomain_ipc_config, ack_work);
+
+	if (ipc_config == NULL) {
+		LOG_ERR("Invalid IPC config in ACK work handler");
+		return;
+	}
+
+	int ret = zbus_multidomain_ipc_backend_ack(ipc_config, ipc_config->ack_msg_id);
+	if (ret < 0) {
+		LOG_ERR("Failed to send ACK for message %d: %d", ipc_config->ack_msg_id, ret);
+	}
+}
+
 void zbus_multidomain_ipc_bound_cb(void *config)
 {
 	struct zbus_multidomain_ipc_config *ipc_config =
@@ -43,15 +89,43 @@ void zbus_multidomain_ipc_recv_cb(const void *data, size_t len, void *config)
 
 	struct zbus_proxy_agent_msg *msg = (struct zbus_proxy_agent_msg *)data;
 
-	if (ipc_config->recv_cb == NULL) {
-		LOG_ERR("No receive callback set for IPC endpoint %s", ipc_config->ept_cfg->name);
-		return;
-	}
+	if (msg->type == ZBUS_PROXY_AGENT_MSG_TYPE_ACK) {
 
-	int ret = ipc_config->recv_cb(msg);
-	if (ret < 0) {
-		LOG_ERR("Failed to process received message on IPC endpoint %s: %d",
-			ipc_config->ept_cfg->name, ret);
+		if (ipc_config->ack_cb == NULL) {
+			LOG_ERR("ACK callback not set, dropping ACK");
+			return;
+		}
+
+		int ret = ipc_config->ack_cb(msg->id, ipc_config->ack_cb_user_data);
+		if (ret < 0) {
+			LOG_ERR("Failed to process received ACK: %d", ret);
+		}
+
+		return;
+	} else if (msg->type == ZBUS_PROXY_AGENT_MSG_TYPE_MSG) {
+
+		/* Schedule work to send ACK to avoid blocking the receive callback */
+		ipc_config->ack_msg_id = msg->id;
+		int ret = k_work_submit(&ipc_config->ack_work);
+		if (ret < 0) {
+			LOG_ERR("Failed to submit ACK work: %d", ret);
+			return;
+		}
+
+		if (ipc_config->recv_cb == NULL) {
+			LOG_ERR("No receive callback set for IPC endpoint %s", ipc_config->ept_cfg->name);
+			return;
+		}
+
+		ret = ipc_config->recv_cb(msg);
+		if (ret < 0) {
+			LOG_ERR("Failed to process received message on IPC endpoint %s: %d",
+				ipc_config->ept_cfg->name, ret);
+		}
+		return;
+	} else {
+		LOG_WRN("Unknown message type: %d", msg->type);
+		return;
 	}
 }
 
@@ -61,13 +135,31 @@ int zbus_multidomain_ipc_backend_set_recv_cb(void *config,
 	struct zbus_multidomain_ipc_config *ipc_config =
 		(struct zbus_multidomain_ipc_config *)config;
 
-	if (ipc_config == NULL) {
+	if (ipc_config == NULL || recv_cb == NULL) {
 		LOG_ERR("Invalid parameters to set receive callback");
 		return -EINVAL;
 	}
 
 	ipc_config->recv_cb = recv_cb;
 	LOG_DBG("Set receive callback for IPC endpoint %s", ipc_config->ept_cfg->name);
+	return 0;
+}
+
+int zbus_multidomain_ipc_backend_set_ack_cb(void *config,
+				      int (*ack_cb)(uint32_t msg_id, void *user_data),
+				      void *user_data)
+{
+	struct zbus_multidomain_ipc_config *ipc_config =
+		(struct zbus_multidomain_ipc_config *)config;
+
+	if (ipc_config == NULL || ack_cb == NULL) {
+		LOG_ERR("Invalid parameters to set ACK callback");
+		return -EINVAL;
+	}
+
+	ipc_config->ack_cb = ack_cb;
+	ipc_config->ack_cb_user_data = user_data;
+	LOG_DBG("Set ACK callback for IPC endpoint %s", ipc_config->ept_cfg->name);
 	return 0;
 }
 
@@ -83,6 +175,8 @@ int zbus_multidomain_ipc_backend_init(void *config)
 		LOG_ERR("Failed to initialize IPC endpoint bound semaphore: %d", ret);
 		return ret;
 	}
+
+	k_work_init(&ipc_config->ack_work, zbus_multidomain_ipc_backend_ack_work_handler);
 
 	LOG_DBG("Initialized IPC endpoint bound semaphore for %s", ipc_config->ept_cfg->name);
 
@@ -158,4 +252,5 @@ const struct zbus_proxy_agent_api zbus_multidomain_ipc_api = {
 	.backend_init = zbus_multidomain_ipc_backend_init,
 	.backend_send = zbus_multidomain_ipc_backend_send,
 	.backend_set_recv_cb = zbus_multidomain_ipc_backend_set_recv_cb,
+	.backend_set_ack_cb = zbus_multidomain_ipc_backend_set_ack_cb,
 };

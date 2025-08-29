@@ -45,6 +45,18 @@ struct zbus_multidomain_ipc_config {
 
 	/** Callback function for received messages */
 	int (*recv_cb)(struct zbus_proxy_agent_msg *msg);
+
+	/** Callback function for ACKs */
+	int (*ack_cb)(uint32_t msg_id, void *user_data);
+
+	/** User data for the ACK callback */
+	void *ack_cb_user_data;
+
+	/** Work item for sending ACKs */
+	struct k_work ack_work;
+
+	/** Message ID to ACK */
+	uint32_t ack_msg_id;
 };
 
 /**
