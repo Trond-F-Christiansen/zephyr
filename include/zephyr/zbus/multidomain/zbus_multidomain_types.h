@@ -35,6 +35,17 @@ enum zbus_multidomain_type {
 };
 
 /**
+ * @brief Type of the proxy agent message.
+ *
+ * This enum defines the types of messages that can be sent or received by the proxy agent.
+ * A message can either be a data message or an acknowledgment (ACK) message.
+ */
+enum zbus_proxy_agent_msg_type {
+	ZBUS_PROXY_AGENT_MSG_TYPE_MSG = 0,
+	ZBUS_PROXY_AGENT_MSG_TYPE_ACK = 1,
+};
+
+/**
  * @brief Message structure for the proxy agent.
  *
  * This structure represents a message that is sent or received by the proxy agent.
@@ -42,6 +53,13 @@ enum zbus_multidomain_type {
  * associated with the message.
  */
 struct zbus_proxy_agent_msg {
+
+	/* Type of the message: data or acknowledgment */
+	uint8_t type;
+
+	/* Message id. sys_clock_cycle when sent */
+	uint32_t id;
+
 	/* The size of the message */
 	size_t message_size;
 
@@ -57,7 +75,6 @@ struct zbus_proxy_agent_msg {
 
 /**
  * @brief Proxy agent API structure.
- *
  */
 struct zbus_proxy_agent_api {
 
@@ -92,28 +109,21 @@ struct zbus_proxy_agent_api {
 	 * @param recv_cb Pointer to the callback function to be set.
 	 * @return int 0 on success, negative error code on failure.
 	 */
-	int (*backend_set_recv_cb)(void *config,
-				       int (*recv_cb)(struct zbus_proxy_agent_msg *msg));
-};
+	int (*backend_set_recv_cb)(void *config, int (*recv_cb)(struct zbus_proxy_agent_msg *msg));
 
-/**
- * @brief Configuration structure for the proxy agent.
- *
- * This structure holds the configuration for a proxy agent, including its name,
- * type, backend specific API, and backend specific configuration.
- */
-struct zbus_proxy_agent_config {
-	/* The name of the proxy agent */
-	const char *name;
-
-	/* The type of the proxy agent */
-	enum zbus_multidomain_type type;
-
-	/* Pointer to the backend specific API */
-	const struct zbus_proxy_agent_api *api;
-
-	/* Pointer to the backend specific configuration */
-	void *backend_config;
+	/**
+	 * @brief Set the acknowledgment callback for the proxy agent.
+	 *
+	 * This function is called to set the callback function that will be invoked
+	 * when an acknowledgment is received for a sent message.
+	 *
+	 * @param config Pointer to the backend specific configuration.
+	 * @param ack_cb Pointer to the acknowledgment callback function to be set.
+	 * @param user_data Pointer to user data that will be passed to the acknowledgment callback.
+	 * @return int 0 on success, negative error code on failure.
+	 */
+	int (*backend_set_ack_cb)(void *config, int (*ack_cb)(uint32_t msg_id, void *user_data),
+				  void *user_data);
 };
 
 /**

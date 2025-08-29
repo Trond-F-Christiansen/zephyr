@@ -9,6 +9,8 @@
 
 #include <zephyr/kernel.h>
 #include <string.h>
+#include <zephyr/net_buf.h>
+#include <zephyr/sys/slist.h>
 #include <zephyr/zbus/zbus.h>
 #include <zephyr/zbus/multidomain/zbus_multidomain_types.h>
 
@@ -18,7 +20,6 @@
 #if defined(CONFIG_ZBUS_MULTIDOMAIN_IPC)
 #include <zephyr/zbus/multidomain/zbus_multidomain_ipc.h>
 #endif
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,24 +35,87 @@ extern "C" {
  */
 
 /**
+ * @brief Structure for tracking sent messages awaiting acknowledgment.
+ *
+ * This structure is used internally by the proxy agent to keep track of messages
+ * that have been sent but not yet acknowledged. It contains a copy of the message,
+ * the number of transmit attempts, and a delayed work item for timeout handling.
+ */
+struct zbus_proxy_agent_tracked_msg {
+	/** Copy of the sent message */
+	struct zbus_proxy_agent_msg msg;
+
+	/** Pointer to the proxy agent configuration */
+	struct zbus_proxy_agent_config *config;
+
+	/** Number of transmit attempts made for this message */
+	uint8_t transmit_attempts;
+
+	/** Work item for handling acknowledgment timeout */
+	struct k_work_delayable work;
+};
+
+/**
+ * @brief Configuration structure for the proxy agent.
+ *
+ * This structure holds the configuration for a proxy agent, including its name,
+ * type, backend specific API, and backend specific configuration.
+ */
+struct zbus_proxy_agent_config {
+	/* The name of the proxy agent */
+	const char *name;
+
+	/* The type of the proxy agent */
+	enum zbus_multidomain_type type;
+
+	/* Pointer to the backend specific API */
+	const struct zbus_proxy_agent_api *api;
+
+	/* Pointer to the backend specific configuration */
+	void *backend_config;
+
+	/* Pool for tracking sent messages awaiting acknowledgment */
+	struct net_buf_pool *sent_msg_pool;
+
+	/* List of sent messages awaiting acknowledgment */
+	sys_slist_t sent_msg_list;
+};
+
+/**
  * @brief Set up a proxy agent using the provided configuration.
  *
  * Starts the proxy agent thread and initializes the necessary resources.
+ *
+ * @note This macro sets up net_buf_pool for tracking sent messages, defines
+ * a zbus subscriber, and creates a thread for the proxy agent.
+ *
+ * @note the ZBUS_MULTIDOMAIN_SENT_MSG_POOL_SIZE configuration option
+ * must be set to a value greater than or equal to the maximum number of
+ * unacknowledged messages that can be in flight at any given time.
+ *
+ * @note The configuration options ZBUS_MULTIDOMAIN_PROXY_STACK_SIZE and
+ * ZBUS_MULTIDOMAIN_PROXY_PRIORITY define the stack size and priority of the
+ * proxy agent thread, respectively.
  *
  * @param _name The name of the proxy agent.
  * @param _type The type of the proxy agent (enum zbus_multidomain_type)
  * @param _nodelabel The device node label for the proxy agent.
  */
 #define ZBUS_PROXY_AGENT_DEFINE(_name, _type, _nodelabel)                                          \
+	NET_BUF_POOL_DEFINE(_name##_sent_msg_pool, CONFIG_ZBUS_MULTIDOMAIN_SENT_MSG_POOL_SIZE,     \
+			    sizeof(struct zbus_proxy_agent_tracked_msg), sizeof(uint32_t), NULL);  \
 	_ZBUS_GENERATE_BACKEND_CONFIG(_name, _type, _nodelabel);                                   \
-	struct zbus_proxy_agent_config _name##_config = {.name = #_name,                           \
-							 .type = _type,                            \
-							 .api = _ZBUS_GET_API(_type),              \
-							 .backend_config =                         \
-								 _ZBUS_GET_CONFIG(_name, _type)};  \
+	struct zbus_proxy_agent_config _name##_config = {                                          \
+		.name = #_name,                                                                    \
+		.type = _type,                                                                     \
+		.api = _ZBUS_GET_API(_type),                                                       \
+		.backend_config = _ZBUS_GET_CONFIG(_name, _type),                                  \
+		.sent_msg_pool = &_name##_sent_msg_pool,                                           \
+	};                                                                                         \
 	ZBUS_MSG_SUBSCRIBER_DEFINE(_name##_subscriber);                                            \
-	K_THREAD_DEFINE(_name##_thread_id, 1024, zbus_proxy_agent_thread, &_name##_config,         \
-			&_name##_subscriber, NULL, 7, 0, 0);
+	K_THREAD_DEFINE(_name##_thread_id, CONFIG_ZBUS_MULTIDOMAIN_PROXY_STACK_SIZE,               \
+			zbus_proxy_agent_thread, &_name##_config, &_name##_subscriber, NULL,       \
+			CONFIG_ZBUS_MULTIDOMAIN_PROXY_PRIORITY, 0, 0);
 
 /**
  * @brief Add a channel to the proxy agent.
@@ -60,16 +124,6 @@ extern "C" {
  * @param _chan The channel to be added.
  */
 #define ZBUS_PROXY_ADD_CHANNEL(_name, _chan) ZBUS_CHAN_ADD_OBS(_chan, _name##_subscriber, 0);
-
-/**
- * @brief Callback function for receiving messages.
- *
- * This function is called when a message is received by the backend.
- *
- * @param msg pointer to the received message.
- * @return int 0 on success, negative error code on failure.
- */
-int zbus_proxy_agent_msg_recv_cb(struct zbus_proxy_agent_msg *msg);
 
 /**
  * @brief Thread function for the proxy agent.
@@ -86,27 +140,6 @@ int zbus_proxy_agent_thread(struct zbus_proxy_agent_config *config,
 			    const struct zbus_observer *subscriber);
 
 /** @cond INTERNAL_HIDDEN */
-
-/**
- * @brief Initialize the proxy agent.
- *
- * This function initializes the proxy agent with the provided configuration
- * and backend specific settings.
- *
- * @param config Pointer to the configuration structure for the proxy agent.
- * @return int 0 on success, negative error code on failure.
- */
-int zbus_proxy_agent_init(struct zbus_proxy_agent_config *config);
-
-/**
- * @brief Send a message through the proxy agent.
- *
- * @param config Pointer to the configuration structure for the proxy agent.
- * @param msg pointer to the message to be sent.
- * @return int 0 on success, negative error code on failure.
- */
-int zbus_proxy_agent_send(const struct zbus_proxy_agent_config *config,
-			  struct zbus_proxy_agent_msg *msg);
 
 /**
  * @brief Macros to generate backend specific configurations for the proxy agent.
